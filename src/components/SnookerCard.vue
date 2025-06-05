@@ -159,7 +159,7 @@ onBeforeUnmount(() => {
 }
 
 .card-header {
-  height: 200px;
+  height: 100px;
   background-size: cover;
   background-position: center;
   display: flex;
