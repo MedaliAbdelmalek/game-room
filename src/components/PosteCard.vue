@@ -1,5 +1,9 @@
 <template>
-  <div class="station-card" :class="{ active: isRunning, 'ps4-active': isRunning && console === 'ps4', 'ps5-active': isRunning && console === 'ps5' }">
+  <div class="station-card" :class="{ 
+    active: isRunning, 
+    'ps4-active': isRunning && consoleValue === 'ps4', 
+    'ps5-active': isRunning && consoleValue === 'ps5' 
+  }">
     <div class="card-header">
       <div class="station-icon">
         <svg v-if="posteNumber <= 5" class="ps-icon" viewBox="0 0 24 24">
@@ -26,7 +30,7 @@
 
     <div v-if="posteNumber === 6 || posteNumber === 7" class="console-selector">
       <select 
-        v-model="console" 
+        v-model="consoleValue" 
         class="console-select"
         :disabled="isRunning"
       >
@@ -94,7 +98,7 @@ const storageKey = `poste-${props.posteNumber}`;
 const seconds = ref(0);
 const isRunning = ref(false);
 const timer = ref<number | null>(null);
-const console = ref<'ps4' | 'ps5'>('ps4');
+const consoleValue = ref<'ps4' | 'ps5'>('ps4');
 const playerCount = ref<'2' | '4'>('2');
 
 const hourlyRate = computed(() => {
@@ -102,7 +106,7 @@ const hourlyRate = computed(() => {
     return playerCount.value === '4' ? 10 : 5;
   }
   
-  if (console.value === 'ps5') {
+  if (consoleValue.value === 'ps5') {
     return playerCount.value === '4' ? 15 : 7.5;
   } else {
     return playerCount.value === '4' ? 10 : 5;
@@ -135,7 +139,7 @@ const start = () => {
 const stop = () => {
   if (isRunning.value) {
     isRunning.value = false;
-    clearInterval(timer.value!);
+    if (timer.value) clearInterval(timer.value);
     timer.value = null;
     saveState();
     emit('stopped');
@@ -149,7 +153,7 @@ const reset = () => {
     seconds.value = 0;
     playerCount.value = '2';
     if (props.posteNumber <= 5) {
-      console.value = 'ps4';
+      consoleValue.value = 'ps4';
     }
     localStorage.removeItem(storageKey);
     // Don't emit time-updated with 0 to preserve total revenue
@@ -161,7 +165,7 @@ function saveState() {
     seconds: seconds.value,
     isRunning: isRunning.value,
     lastStart: isRunning.value ? Date.now() : null,
-    console: console.value,
+    console: consoleValue.value,
     playerCount: playerCount.value
   }));
 }
@@ -170,17 +174,18 @@ onMounted(() => {
   const data = localStorage.getItem(storageKey);
   if (data) {
     try {
+      const parsedData = JSON.parse(data);
       const { 
-        seconds: savedSec, 
-        isRunning: wasRunning, 
-        lastStart, 
-        console: savedConsole,
-        playerCount: savedPlayerCount 
-      } = JSON.parse(data);
+        seconds: savedSec = 0, 
+        isRunning: wasRunning = false, 
+        lastStart = null, 
+        console: savedConsole = 'ps4',
+        playerCount: savedPlayerCount = '2' 
+      } = parsedData;
       
-      seconds.value = savedSec || 0;
-      if (savedConsole) console.value = savedConsole;
-      if (savedPlayerCount) playerCount.value = savedPlayerCount;
+      seconds.value = savedSec;
+      consoleValue.value = savedConsole;
+      playerCount.value = savedPlayerCount;
       
       if (wasRunning && lastStart) {
         const elapsed = Math.floor((Date.now() - lastStart) / 1000);
@@ -194,7 +199,7 @@ onMounted(() => {
   }
 });
 
-watch([seconds, console, playerCount], () => {
+watch([seconds, consoleValue, playerCount], () => {
   if (isRunning.value) {
     saveState();
     emit('time-updated', props.posteNumber, price.value);
@@ -205,6 +210,7 @@ onBeforeUnmount(() => {
   if (timer.value) clearInterval(timer.value);
 });
 </script>
+
 
 <style scoped>
 .station-card {
