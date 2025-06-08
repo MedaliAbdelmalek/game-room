@@ -1,6 +1,6 @@
 <template>
   <div class="snooker-card" :class="{ active: isRunning }">
-    <div class="card-header" :style="{ backgroundImage: 'url(https://t3.ftcdn.net/jpg/06/10/72/06/240_F_610720643_pBEwd4FFHO6eu65R4dbjATQQDoRNXN3U.jpg)' }">
+    <div class="card-header" :style="{ backgroundImage: 'url(https://media.istockphoto.com/id/484690968/photo/opening-frame-of-snooker-game-with-cue-from-back.jpg?s=612x612&w=0&k=20&c=NSNBhy45SbbeudWwV1rXYtXA6oioRtxk7oxBeg9RxDI=)' }">
       <h2 class="station-title">Snooker Table</h2>
       <div class="status-indicator" :class="{ active: isRunning }"></div>
     </div>
@@ -192,8 +192,7 @@ onBeforeUnmount(() => {
   border: 2px solid transparent;
   transition: all 0.3s ease;
   grid-column: 1 / -1;
-  max-width: 400px;
-  margin: 0 auto;
+
 }
 
 .snooker-card.active {
@@ -202,7 +201,7 @@ onBeforeUnmount(() => {
 }
 
 .card-header {
-  height: 100px;
+  height: 200px;
   background-size: cover;
   background-position: center;
   display: flex;
