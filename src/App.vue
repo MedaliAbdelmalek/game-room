@@ -69,16 +69,41 @@ onMounted(() => {
   updateTime();
   timeInterval = setInterval(updateTime, 1000);
   
-  const saved = localStorage.getItem('isDark');
-  if (saved !== null) {
-    isDark.value = JSON.parse(saved);
+  // Load theme preference from localStorage (client-side only)
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('isDark');
+    if (saved !== null) {
+      isDark.value = JSON.parse(saved);
+    }
   }
 
-  const savedRevenue = localStorage.getItem('totalPlayedRevenue');
-  if (savedRevenue) {
-    totalPlayedRevenue.value = parseFloat(savedRevenue);
-  }
+  // Initialize KV data
+  initializeKVData();
 });
+
+async function initializeKVData() {
+  try {
+    const response = await fetch('/api/kv/get', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ keys: ['totalPlayedRevenue', 'stationRevenues'] }),
+    });
+    
+    const data = await response.json();
+    
+    if (data.totalPlayedRevenue) {
+      totalPlayedRevenue.value = parseFloat(data.totalPlayedRevenue);
+    }
+    
+    if (data.stationRevenues) {
+      stationRevenues.value = JSON.parse(data.stationRevenues);
+    }
+  } catch (error) {
+    console.error('Error initializing KV data:', error);
+  }
+}
 
 onBeforeUnmount(() => {
   clearInterval(timeInterval);
@@ -102,20 +127,61 @@ function handleStationStop() {
   activeStations.value--;
 }
 
-function handleTimeUpdate(stationId: number | string, newPrice: number) {
+async function handleTimeUpdate(stationId: number | string, newPrice: number) {
   stationRevenues.value[stationId] = newPrice;
   totalPlayedRevenue.value = Object.values(stationRevenues.value).reduce((sum, price) => sum + price, 0);
-  localStorage.setItem('totalPlayedRevenue', totalPlayedRevenue.value.toString());
+  
+  // Update KV storage
+  try {
+    await fetch('/api/kv/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key: 'stationRevenues',
+        value: JSON.stringify(stationRevenues.value)
+      }),
+    });
+
+    await fetch('/api/kv/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key: 'totalPlayedRevenue',
+        value: totalPlayedRevenue.value.toString()
+      }),
+    });
+  } catch (error) {
+    console.error('Error updating KV storage:', error);
+  }
 }
 
-function resetTotalRevenue() {
+async function resetTotalRevenue() {
   totalPlayedRevenue.value = 0;
   stationRevenues.value = {};
-  localStorage.removeItem('totalPlayedRevenue');
+  
+  try {
+    await fetch('/api/kv/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        keys: ['totalPlayedRevenue', 'stationRevenues']
+      }),
+    });
+  } catch (error) {
+    console.error('Error resetting KV storage:', error);
+  }
 }
 
 watch(isDark, (val) => {
-  localStorage.setItem('isDark', JSON.stringify(val));
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('isDark', JSON.stringify(val));
+  }
 });
 </script>
 

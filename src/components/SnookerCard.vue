@@ -76,10 +76,10 @@ const formattedTime = computed(() => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 });
 
-const start = () => {
+const start = async () => {
   if (!isRunning.value) {
     isRunning.value = true;
-    saveState();
+    await saveState();
     emit('started');
     timer.value = setInterval(() => {
       seconds.value++;
@@ -88,38 +88,81 @@ const start = () => {
   }
 };
 
-const stop = () => {
+const stop = async () => {
   if (isRunning.value) {
     isRunning.value = false;
     clearInterval(timer.value!);
     timer.value = null;
-    saveState();
+    await saveState();
     emit('stopped');
     emit('time-updated', 'snooker', price.value);
   }
 };
 
-const reset = () => {
+const reset = async () => {
   if (confirm('Are you sure you want to reset the snooker table timer?')) {
-    stop();
+    await stop();
     seconds.value = 0;
-    localStorage.removeItem(storageKey);
+    await deleteState();
   }
 };
 
-function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify({
-    seconds: seconds.value,
-    isRunning: isRunning.value,
-    lastStart: isRunning.value ? Date.now() : null
-  }));
+async function saveState() {
+  try {
+    const response = await fetch('/api/kv/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key: storageKey,
+        value: JSON.stringify({
+          seconds: seconds.value,
+          isRunning: isRunning.value,
+          lastStart: isRunning.value ? Date.now() : null
+        })
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save snooker state');
+    }
+  } catch (error) {
+    console.error('Error saving snooker state:', error);
+  }
 }
 
-onMounted(() => {
-  const data = localStorage.getItem(storageKey);
-  if (data) {
-    try {
-      const { seconds: savedSec, isRunning: wasRunning, lastStart } = JSON.parse(data);
+async function deleteState() {
+  try {
+    await fetch('/api/kv/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        keys: [storageKey]
+      }),
+    });
+  } catch (error) {
+    console.error('Error deleting snooker state:', error);
+  }
+}
+
+onMounted(async () => {
+  try {
+    const response = await fetch('/api/kv/get', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ keys: [storageKey] }),
+    });
+    
+    const data = await response.json();
+    const snookerData = data[storageKey];
+    
+    if (snookerData) {
+      const { seconds: savedSec, isRunning: wasRunning, lastStart } = JSON.parse(snookerData);
       
       seconds.value = savedSec || 0;
       
@@ -129,9 +172,9 @@ onMounted(() => {
         start();
       }
       emit('time-updated', 'snooker', price.value);
-    } catch (e) {
-      console.error('Failed to load snooker timer:', e);
     }
+  } catch (e) {
+    console.error('Failed to load snooker data:', e);
   }
 });
 

@@ -88,6 +88,7 @@
   </div>
 </template>
 
+
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 
@@ -124,10 +125,10 @@ const formattedTime = computed(() => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 });
 
-const start = () => {
+const start = async () => {
   if (!isRunning.value) {
     isRunning.value = true;
-    saveState();
+    await saveState();
     emit('started');
     timer.value = setInterval(() => {
       seconds.value++;
@@ -136,45 +137,87 @@ const start = () => {
   }
 };
 
-const stop = () => {
+const stop = async () => {
   if (isRunning.value) {
     isRunning.value = false;
     if (timer.value) clearInterval(timer.value);
     timer.value = null;
-    saveState();
+    await saveState();
     emit('stopped');
     emit('time-updated', props.posteNumber, price.value);
   }
 };
 
-const reset = () => {
+const reset = async () => {
   if (confirm('Are you sure you want to reset this station?')) {
-    stop();
+    await stop();
     seconds.value = 0;
     playerCount.value = '2';
     if (props.posteNumber <= 5) {
       consoleValue.value = 'ps4';
     }
-    localStorage.removeItem(storageKey);
-    // Don't emit time-updated with 0 to preserve total revenue
+    await deleteState();
   }
 };
 
-function saveState() {
-  localStorage.setItem(storageKey, JSON.stringify({
-    seconds: seconds.value,
-    isRunning: isRunning.value,
-    lastStart: isRunning.value ? Date.now() : null,
-    console: consoleValue.value,
-    playerCount: playerCount.value
-  }));
+async function saveState() {
+  try {
+    const response = await fetch('/api/kv/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key: storageKey,
+        value: JSON.stringify({
+          seconds: seconds.value,
+          isRunning: isRunning.value,
+          lastStart: isRunning.value ? Date.now() : null,
+          console: consoleValue.value,
+          playerCount: playerCount.value
+        })
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to save state');
+    }
+  } catch (error) {
+    console.error('Error saving station state:', error);
+  }
 }
 
-onMounted(() => {
-  const data = localStorage.getItem(storageKey);
-  if (data) {
-    try {
-      const parsedData = JSON.parse(data);
+async function deleteState() {
+  try {
+    await fetch('/api/kv/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        keys: [storageKey]
+      }),
+    });
+  } catch (error) {
+    console.error('Error deleting station state:', error);
+  }
+}
+
+onMounted(async () => {
+  try {
+    const response = await fetch('/api/kv/get', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ keys: [storageKey] }),
+    });
+    
+    const data = await response.json();
+    const stationData = data[storageKey];
+    
+    if (stationData) {
+      const parsedData = JSON.parse(stationData);
       const { 
         seconds: savedSec = 0, 
         isRunning: wasRunning = false, 
@@ -193,9 +236,9 @@ onMounted(() => {
         start();
       }
       emit('time-updated', props.posteNumber, price.value);
-    } catch (e) {
-      console.error('Failed to load timer:', e);
     }
+  } catch (e) {
+    console.error('Failed to load station data:', e);
   }
 });
 
