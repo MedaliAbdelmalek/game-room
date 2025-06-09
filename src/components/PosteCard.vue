@@ -108,7 +108,7 @@ const hourlyRate = computed(() => {
   }
   
   if (consoleValue.value === 'ps5') {
-    return playerCount.value === '4' ? 15 : 7.5;
+    return playerCount.value === '4' ? 16 : 8;
   } else {
     return playerCount.value === '4' ? 10 : 5;
   }
