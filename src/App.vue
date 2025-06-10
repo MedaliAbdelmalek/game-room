@@ -28,7 +28,7 @@
         <div class="stat-card">
           <div class="stat-value">{{ totalPlayedRevenue.toFixed(2) }} TND</div>
           <div class="stat-label">Total Played Revenue</div>
-          <button class="reset-revenue-btn" @click="resetTotalRevenue">Reset</button>
+          <button class="reset-revenue-btn" @click="showResetDialog">Reset</button>
         </div>
       </div>
 
@@ -49,11 +49,42 @@
         />
       </div>
     </main>
+
+    <!-- Reset Confirmation Modal -->
+    <div v-if="showResetModal" class="modal-overlay" @click="closeResetDialog">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>Reset Total Revenue</h3>
+          <button class="close-btn" @click="closeResetDialog">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Enter the confirmation code to reset the total revenue:</p>
+          <input 
+            type="password" 
+            v-model="resetCode" 
+            class="code-input"
+            placeholder="Enter code"
+            maxlength="8"
+            @keyup.enter="confirmReset"
+            ref="codeInput"
+          />
+          <div v-if="resetError" class="error-message">
+            {{ resetError }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="cancel-btn" @click="closeResetDialog">Cancel</button>
+          <button class="confirm-btn" @click="confirmReset" :disabled="!resetCode">
+            Confirm Reset
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import PosteCard from './components/PosteCard.vue';
 import SnookerCard from './components/SnookerCard.vue';
 
@@ -62,6 +93,14 @@ const currentTime = ref('');
 const activeStations = ref(0);
 const totalPlayedRevenue = ref(0);
 const stationRevenues = ref<Record<number | string, number>>({});
+
+// Reset modal state
+const showResetModal = ref(false);
+const resetCode = ref('');
+const resetError = ref('');
+const codeInput = ref<HTMLInputElement | null>(null);
+
+const RESET_PASSCODE = '14061995';
 
 // Update current time every second
 let timeInterval: number;
@@ -159,11 +198,36 @@ async function handleTimeUpdate(stationId: number | string, newPrice: number) {
   }
 }
 
-async function resetTotalRevenue() {
-  totalPlayedRevenue.value = 0;
-  stationRevenues.value = {};
+function showResetDialog() {
+  showResetModal.value = true;
+  resetCode.value = '';
+  resetError.value = '';
   
+  // Focus on input after modal is rendered
+  nextTick(() => {
+    if (codeInput.value) {
+      codeInput.value.focus();
+    }
+  });
+}
+
+function closeResetDialog() {
+  showResetModal.value = false;
+  resetCode.value = '';
+  resetError.value = '';
+}
+
+async function confirmReset() {
+  if (resetCode.value !== RESET_PASSCODE) {
+    resetError.value = 'Invalid confirmation code. Please try again.';
+    resetCode.value = '';
+    return;
+  }
+
   try {
+    totalPlayedRevenue.value = 0;
+    stationRevenues.value = {};
+    
     await fetch('/api/kv/delete', {
       method: 'POST',
       headers: {
@@ -173,8 +237,11 @@ async function resetTotalRevenue() {
         keys: ['totalPlayedRevenue', 'stationRevenues']
       }),
     });
+    
+    closeResetDialog();
   } catch (error) {
     console.error('Error resetting KV storage:', error);
+    resetError.value = 'Error occurred while resetting. Please try again.';
   }
 }
 
@@ -201,6 +268,145 @@ watch(isDark, (val) => {
 .reset-revenue-btn:hover {
   background-color: #d50000;
   color: white;
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: var(--bg-secondary);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background-color: var(--stat-bg);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.modal-body p {
+  margin: 0 0 1rem 0;
+  color: var(--text-secondary);
+}
+
+.code-input {
+  padding: 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  text-align: center;
+  letter-spacing: 2px;
+  font-family: 'Fira Code', monospace;
+  transition: border-color 0.2s;
+}
+
+.code-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.error-message {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background-color: rgba(213, 0, 0, 0.1);
+  color: #d50000;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.cancel-btn,
+.confirm-btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn {
+  background-color: var(--stat-bg);
+  color: var(--text-secondary);
+}
+
+.cancel-btn:hover {
+  background-color: var(--border);
+  color: var(--text-primary);
+}
+
+.confirm-btn {
+  background-color: #d50000;
+  color: white;
+}
+
+.confirm-btn:hover:not(:disabled) {
+  background-color: #b71c1c;
+}
+
+.confirm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .app {
@@ -398,6 +604,10 @@ input:checked + .slider:before {
   
   .stats-summary {
     grid-template-columns: 1fr;
+  }
+
+  .modal-content {
+    margin: 1rem;
   }
 }
 </style>
