@@ -166,11 +166,23 @@ function handleStationStop() {
   activeStations.value--;
 }
 
-async function handleTimeUpdate(stationId: number | string, newPrice: number) {
-  stationRevenues.value[stationId] = newPrice;
-  totalPlayedRevenue.value = Object.values(stationRevenues.value).reduce((sum, price) => sum + price, 0);
-  
-  // Update KV storage
+function handleTimeUpdate(stationId: number | string, newPrice: number, shouldSaveToKV = false) {
+  // Only update the station's revenue if it's not a reset (newPrice > 0)
+  // Or if we're explicitly stopping the station
+  if (newPrice > 0 || shouldSaveToKV) {
+    stationRevenues.value[stationId] = newPrice;
+    
+    // Recalculate total revenue
+    totalPlayedRevenue.value = Object.values(stationRevenues.value).reduce((sum, price) => sum + price, 0);
+    
+    // Only save to KV if explicitly requested (on stop)
+    if (shouldSaveToKV) {
+      saveRevenueToKV();
+    }
+  }
+}
+
+async function saveRevenueToKV() {
   try {
     await fetch('/api/kv/set', {
       method: 'POST',
@@ -182,7 +194,7 @@ async function handleTimeUpdate(stationId: number | string, newPrice: number) {
         value: JSON.stringify(stationRevenues.value)
       }),
     });
-
+    
     await fetch('/api/kv/set', {
       method: 'POST',
       headers: {
@@ -194,7 +206,7 @@ async function handleTimeUpdate(stationId: number | string, newPrice: number) {
       }),
     });
   } catch (error) {
-    console.error('Error updating KV storage:', error);
+    console.error('Error saving revenue to KV:', error);
   }
 }
 
@@ -225,16 +237,30 @@ async function confirmReset() {
   }
 
   try {
+    // Reset total revenue and clear all station revenues
     totalPlayedRevenue.value = 0;
     stationRevenues.value = {};
     
-    await fetch('/api/kv/delete', {
+    // Save to KV
+    await fetch('/api/kv/set', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        keys: ['totalPlayedRevenue', 'stationRevenues']
+        key: 'totalPlayedRevenue',
+        value: '0'
+      }),
+    });
+    
+    await fetch('/api/kv/set', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        key: 'stationRevenues',
+        value: '{}'
       }),
     });
     

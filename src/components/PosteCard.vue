@@ -98,11 +98,10 @@ const emit = defineEmits(['started', 'stopped', 'time-updated']);
 const storageKey = `poste-${props.posteNumber}`;
 const seconds = ref(0);
 const isRunning = ref(false);
-const startTime = ref<number | null>(null);
-const accumulatedSeconds = ref(0); // For previous sessions
 const timer = ref<number | null>(null);
 const consoleValue = ref<'ps4' | 'ps5'>('ps4');
 const playerCount = ref<'2' | '4'>('2');
+const startTime = ref<number | null>(null);
 
 const hourlyRate = computed(() => {
   if (props.posteNumber <= 5) {
@@ -127,61 +126,62 @@ const formattedTime = computed(() => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 });
 
-function updateElapsedTime() {
-  if (isRunning.value && startTime.value) {
-    const elapsed = Math.floor((Date.now() - startTime.value) / 1000);
-    seconds.value = accumulatedSeconds.value + elapsed;
-    emit('time-updated', props.posteNumber, price.value);
+const calculateElapsedTime = () => {
+  if (startTime.value && isRunning.value) {
+    return Math.floor((Date.now() - startTime.value) / 1000);
   }
-}
+  return seconds.value;
+};
 
 const start = async () => {
   if (!isRunning.value) {
     isRunning.value = true;
-    startTime.value = Date.now();
-    await saveState();
+    startTime.value = Date.now() - (seconds.value * 1000); // Account for any previous time
+    await saveState(); // Only save on start
     emit('started');
     
-    // Update timer every second for display
-    timer.value = setInterval(updateElapsedTime, 1000);
-  }
-};
-
-const stop = async () => {
-  if (isRunning.value) {
-    // Calculate final time before stopping
-    if (startTime.value) {
-      const elapsed = Math.floor((Date.now() - startTime.value) / 1000);
-      accumulatedSeconds.value += elapsed;
-      seconds.value = accumulatedSeconds.value;
-    }
-    
-    isRunning.value = false;
-    startTime.value = null;
-    
-    if (timer.value) {
-      clearInterval(timer.value);
-      timer.value = null;
-    }
-    
-    await saveState();
-    emit('stopped');
-    emit('time-updated', props.posteNumber, price.value);
+    // Start the visual timer - NO KV STORAGE HERE
+    timer.value = setInterval(() => {
+      seconds.value = calculateElapsedTime();
+      emit('time-updated', props.posteNumber, price.value);
+    }, 1000);
   }
 };
 
 const reset = async () => {
   if (confirm('Are you sure you want to reset this station?')) {
+    // Get the final price BEFORE resetting
+    const finalPrice = price.value;
+    
+    // Reset the timer
     await stop();
     seconds.value = 0;
-    accumulatedSeconds.value = 0;
     startTime.value = null;
     playerCount.value = '2';
     if (props.posteNumber <= 5) {
       consoleValue.value = 'ps4';
     }
+    
+    // Emit the final price (not 0) and save to KV
+    emit('time-updated', props.posteNumber, finalPrice, true);
     await deleteState();
-    emit('time-updated', props.posteNumber, 0);
+  }
+};
+
+const stop = async () => {
+  if (isRunning.value) {
+    isRunning.value = false;
+    if (timer.value) clearInterval(timer.value);
+    timer.value = null;
+    
+    // Calculate final elapsed time
+    seconds.value = calculateElapsedTime();
+    startTime.value = null;
+    
+    await saveState();
+    emit('stopped');
+    // Emit current price and save to KV
+    emit('time-updated', props.posteNumber, price.value, true);
   }
 };
 
@@ -195,9 +195,9 @@ async function saveState() {
       body: JSON.stringify({
         key: storageKey,
         value: JSON.stringify({
+          seconds: seconds.value,
           isRunning: isRunning.value,
           startTime: startTime.value,
-          accumulatedSeconds: accumulatedSeconds.value,
           console: consoleValue.value,
           playerCount: playerCount.value
         })
@@ -244,29 +244,33 @@ onMounted(async () => {
     if (stationData) {
       const parsedData = JSON.parse(stationData);
       const { 
+        seconds: savedSec = 0, 
         isRunning: wasRunning = false, 
-        startTime: savedStartTime = null,
-        accumulatedSeconds: savedAccumulated = 0,
+        startTime: savedStartTime = null, 
         console: savedConsole = 'ps4',
         playerCount: savedPlayerCount = '2' 
       } = parsedData;
       
-      accumulatedSeconds.value = savedAccumulated;
       consoleValue.value = savedConsole;
       playerCount.value = savedPlayerCount;
       
       if (wasRunning && savedStartTime) {
-        // Calculate elapsed time since start
-        const elapsed = Math.floor((Date.now() - savedStartTime) / 1000);
-        seconds.value = accumulatedSeconds.value + elapsed;
-        
-        // Resume the timer
+        // Station was running when we left
         isRunning.value = true;
         startTime.value = savedStartTime;
+        seconds.value = calculateElapsedTime();
+        
+        // Start the timer to keep updating
+        timer.value = setInterval(() => {
+          seconds.value = calculateElapsedTime();
+          emit('time-updated', props.posteNumber, price.value);
+        }, 1000);
+        
         emit('started');
-        timer.value = setInterval(updateElapsedTime, 1000);
       } else {
-        seconds.value = accumulatedSeconds.value;
+        // Station was stopped
+        seconds.value = savedSec;
+        startTime.value = null;
       }
       
       emit('time-updated', props.posteNumber, price.value);
@@ -276,10 +280,10 @@ onMounted(async () => {
   }
 });
 
-// Watch for changes in console/player settings while running
+// Watch for changes in console/player settings while running - NO KV STORAGE
 watch([consoleValue, playerCount], () => {
   if (isRunning.value) {
-    saveState();
+    // Only emit the price update, don't save to KV
     emit('time-updated', props.posteNumber, price.value);
   }
 });
