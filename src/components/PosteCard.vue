@@ -98,6 +98,8 @@ const emit = defineEmits(['started', 'stopped', 'time-updated']);
 const storageKey = `poste-${props.posteNumber}`;
 const seconds = ref(0);
 const isRunning = ref(false);
+const startTime = ref<number | null>(null);
+const accumulatedSeconds = ref(0); // For previous sessions
 const timer = ref<number | null>(null);
 const consoleValue = ref<'ps4' | 'ps5'>('ps4');
 const playerCount = ref<'2' | '4'>('2');
@@ -125,23 +127,43 @@ const formattedTime = computed(() => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 });
 
+function updateElapsedTime() {
+  if (isRunning.value && startTime.value) {
+    const elapsed = Math.floor((Date.now() - startTime.value) / 1000);
+    seconds.value = accumulatedSeconds.value + elapsed;
+    emit('time-updated', props.posteNumber, price.value);
+  }
+}
+
 const start = async () => {
   if (!isRunning.value) {
     isRunning.value = true;
+    startTime.value = Date.now();
     await saveState();
     emit('started');
-    timer.value = setInterval(() => {
-      seconds.value++;
-      emit('time-updated', props.posteNumber, price.value);
-    }, 1000);
+    
+    // Update timer every second for display
+    timer.value = setInterval(updateElapsedTime, 1000);
   }
 };
 
 const stop = async () => {
   if (isRunning.value) {
+    // Calculate final time before stopping
+    if (startTime.value) {
+      const elapsed = Math.floor((Date.now() - startTime.value) / 1000);
+      accumulatedSeconds.value += elapsed;
+      seconds.value = accumulatedSeconds.value;
+    }
+    
     isRunning.value = false;
-    if (timer.value) clearInterval(timer.value);
-    timer.value = null;
+    startTime.value = null;
+    
+    if (timer.value) {
+      clearInterval(timer.value);
+      timer.value = null;
+    }
+    
     await saveState();
     emit('stopped');
     emit('time-updated', props.posteNumber, price.value);
@@ -152,11 +174,14 @@ const reset = async () => {
   if (confirm('Are you sure you want to reset this station?')) {
     await stop();
     seconds.value = 0;
+    accumulatedSeconds.value = 0;
+    startTime.value = null;
     playerCount.value = '2';
     if (props.posteNumber <= 5) {
       consoleValue.value = 'ps4';
     }
     await deleteState();
+    emit('time-updated', props.posteNumber, 0);
   }
 };
 
@@ -170,9 +195,9 @@ async function saveState() {
       body: JSON.stringify({
         key: storageKey,
         value: JSON.stringify({
-          seconds: seconds.value,
           isRunning: isRunning.value,
-          lastStart: isRunning.value ? Date.now() : null,
+          startTime: startTime.value,
+          accumulatedSeconds: accumulatedSeconds.value,
           console: consoleValue.value,
           playerCount: playerCount.value
         })
@@ -219,22 +244,31 @@ onMounted(async () => {
     if (stationData) {
       const parsedData = JSON.parse(stationData);
       const { 
-        seconds: savedSec = 0, 
         isRunning: wasRunning = false, 
-        lastStart = null, 
+        startTime: savedStartTime = null,
+        accumulatedSeconds: savedAccumulated = 0,
         console: savedConsole = 'ps4',
         playerCount: savedPlayerCount = '2' 
       } = parsedData;
       
-      seconds.value = savedSec;
+      accumulatedSeconds.value = savedAccumulated;
       consoleValue.value = savedConsole;
       playerCount.value = savedPlayerCount;
       
-      if (wasRunning && lastStart) {
-        const elapsed = Math.floor((Date.now() - lastStart) / 1000);
-        seconds.value += elapsed;
-        start();
+      if (wasRunning && savedStartTime) {
+        // Calculate elapsed time since start
+        const elapsed = Math.floor((Date.now() - savedStartTime) / 1000);
+        seconds.value = accumulatedSeconds.value + elapsed;
+        
+        // Resume the timer
+        isRunning.value = true;
+        startTime.value = savedStartTime;
+        emit('started');
+        timer.value = setInterval(updateElapsedTime, 1000);
+      } else {
+        seconds.value = accumulatedSeconds.value;
       }
+      
       emit('time-updated', props.posteNumber, price.value);
     }
   } catch (e) {
@@ -242,7 +276,8 @@ onMounted(async () => {
   }
 });
 
-watch([seconds, consoleValue, playerCount], () => {
+// Watch for changes in console/player settings while running
+watch([consoleValue, playerCount], () => {
   if (isRunning.value) {
     saveState();
     emit('time-updated', props.posteNumber, price.value);

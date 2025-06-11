@@ -62,6 +62,8 @@ const emit = defineEmits(['started', 'stopped', 'time-updated']);
 const storageKey = 'snooker-table';
 const seconds = ref(0);
 const isRunning = ref(false);
+const startTime = ref<number | null>(null);
+const accumulatedSeconds = ref(0); // For previous sessions
 const timer = ref<number | null>(null);
 const hourlyRate = 10; // Fixed at 10 TND/h for snooker
 
@@ -76,23 +78,43 @@ const formattedTime = computed(() => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 });
 
+function updateElapsedTime() {
+  if (isRunning.value && startTime.value) {
+    const elapsed = Math.floor((Date.now() - startTime.value) / 1000);
+    seconds.value = accumulatedSeconds.value + elapsed;
+    emit('time-updated', 'snooker', price.value);
+  }
+}
+
 const start = async () => {
   if (!isRunning.value) {
     isRunning.value = true;
+    startTime.value = Date.now();
     await saveState();
     emit('started');
-    timer.value = setInterval(() => {
-      seconds.value++;
-      emit('time-updated', 'snooker', price.value);
-    }, 1000);
+    
+    // Update timer every second for display
+    timer.value = setInterval(updateElapsedTime, 1000);
   }
 };
 
 const stop = async () => {
   if (isRunning.value) {
+    // Calculate final time before stopping
+    if (startTime.value) {
+      const elapsed = Math.floor((Date.now() - startTime.value) / 1000);
+      accumulatedSeconds.value += elapsed;
+      seconds.value = accumulatedSeconds.value;
+    }
+    
     isRunning.value = false;
-    clearInterval(timer.value!);
-    timer.value = null;
+    startTime.value = null;
+    
+    if (timer.value) {
+      clearInterval(timer.value);
+      timer.value = null;
+    }
+    
     await saveState();
     emit('stopped');
     emit('time-updated', 'snooker', price.value);
@@ -103,7 +125,10 @@ const reset = async () => {
   if (confirm('Are you sure you want to reset the snooker table timer?')) {
     await stop();
     seconds.value = 0;
+    accumulatedSeconds.value = 0;
+    startTime.value = null;
     await deleteState();
+    emit('time-updated', 'snooker', 0);
   }
 };
 
@@ -117,9 +142,9 @@ async function saveState() {
       body: JSON.stringify({
         key: storageKey,
         value: JSON.stringify({
-          seconds: seconds.value,
           isRunning: isRunning.value,
-          lastStart: isRunning.value ? Date.now() : null
+          startTime: startTime.value,
+          accumulatedSeconds: accumulatedSeconds.value
         })
       }),
     });
@@ -162,15 +187,28 @@ onMounted(async () => {
     const snookerData = data[storageKey];
     
     if (snookerData) {
-      const { seconds: savedSec, isRunning: wasRunning, lastStart } = JSON.parse(snookerData);
+      const { 
+        isRunning: wasRunning = false, 
+        startTime: savedStartTime = null,
+        accumulatedSeconds: savedAccumulated = 0
+      } = JSON.parse(snookerData);
       
-      seconds.value = savedSec || 0;
+      accumulatedSeconds.value = savedAccumulated;
       
-      if (wasRunning && lastStart) {
-        const elapsed = Math.floor((Date.now() - lastStart) / 1000);
-        seconds.value += elapsed;
-        start();
+      if (wasRunning && savedStartTime) {
+        // Calculate elapsed time since start
+        const elapsed = Math.floor((Date.now() - savedStartTime) / 1000);
+        seconds.value = accumulatedSeconds.value + elapsed;
+        
+        // Resume the timer
+        isRunning.value = true;
+        startTime.value = savedStartTime;
+        emit('started');
+        timer.value = setInterval(updateElapsedTime, 1000);
+      } else {
+        seconds.value = accumulatedSeconds.value;
       }
+      
       emit('time-updated', 'snooker', price.value);
     }
   } catch (e) {
