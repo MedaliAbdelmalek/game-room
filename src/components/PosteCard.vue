@@ -105,13 +105,13 @@ const startTime = ref<number | null>(null);
 
 const hourlyRate = computed(() => {
   if (props.posteNumber <= 5) {
-    return playerCount.value === '4' ? 10 : 5;
+    return playerCount.value === '4' ? 9 : 4.5;
   }
   
   if (consoleValue.value === 'ps5') {
-    return playerCount.value === '4' ? 16 : 8;
+    return playerCount.value === '4' ? 15 : 7.5;
   } else {
-    return playerCount.value === '4' ? 10 : 5;
+    return playerCount.value === '4' ? 9 : 4.5;
   }
 });
 
