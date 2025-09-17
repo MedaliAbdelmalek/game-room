@@ -153,7 +153,6 @@ const reset = async () => {
     // Get the final price BEFORE resetting
     const finalPrice = price.value;
     
-    // Reset the timer
     await stop();
     seconds.value = 0;
     startTime.value = null;
@@ -174,7 +173,6 @@ const stop = async () => {
     if (timer.value) clearInterval(timer.value);
     timer.value = null;
     
-    // Calculate final elapsed time
     seconds.value = calculateElapsedTime();
     startTime.value = null;
     

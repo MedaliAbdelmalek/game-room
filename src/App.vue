@@ -50,7 +50,6 @@
       </div>
     </main>
 
-    <!-- Reset Confirmation Modal -->
     <div v-if="showResetModal" class="modal-overlay" @click="closeResetDialog">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
@@ -108,7 +107,6 @@ onMounted(() => {
   updateTime();
   timeInterval = setInterval(updateTime, 1000);
   
-  // Load theme preference from localStorage (client-side only)
   if (typeof window !== 'undefined') {
     const saved = localStorage.getItem('isDark');
     if (saved !== null) {
@@ -167,12 +165,9 @@ function handleStationStop() {
 }
 
 function handleTimeUpdate(stationId: number | string, newPrice: number, shouldSaveToKV = false) {
-  // Only update the station's revenue if it's not a reset (newPrice > 0)
-  // Or if we're explicitly stopping the station
   if (newPrice > 0 || shouldSaveToKV) {
     stationRevenues.value[stationId] = newPrice;
     
-    // Recalculate total revenue
     totalPlayedRevenue.value = Object.values(stationRevenues.value).reduce((sum, price) => sum + price, 0);
     
     // Only save to KV if explicitly requested (on stop)
@@ -215,7 +210,6 @@ function showResetDialog() {
   resetCode.value = '';
   resetError.value = '';
   
-  // Focus on input after modal is rendered
   nextTick(() => {
     if (codeInput.value) {
       codeInput.value.focus();
@@ -237,7 +231,6 @@ async function confirmReset() {
   }
 
   try {
-    // Reset total revenue and clear all station revenues
     totalPlayedRevenue.value = 0;
     stationRevenues.value = {};
     

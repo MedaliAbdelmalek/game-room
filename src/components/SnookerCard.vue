@@ -12,7 +12,7 @@
       </div>
       <div class="info-row">
         <span class="info-label">Rate:</span>
-        <span class="info-value">10.00 TND/h</span>
+        <span class="info-value">11.5 TND/h</span>
       </div>
       <div class="info-row total">
         <span class="info-label">Total:</span>
@@ -64,7 +64,7 @@ const seconds = ref(0);
 const isRunning = ref(false);
 const timer = ref<number | null>(null);
 const startTime = ref<number | null>(null);
-const hourlyRate = 10; // Fixed at 10 TND/h for snooker
+const hourlyRate = 11.5; // Fixed at 11.5 TND/h for snooker
 
 const price = computed(() => {
   return (seconds.value / 3600) * hourlyRate;
